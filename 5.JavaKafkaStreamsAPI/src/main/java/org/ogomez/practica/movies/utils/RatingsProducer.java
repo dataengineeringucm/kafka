@@ -15,7 +15,6 @@ import java.util.concurrent.ExecutionException;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.ogomez.practica.movies.MovieTopology;
-import org.ogomez.practica.movies.model.Movie;
 import org.ogomez.practica.movies.model.Rating;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

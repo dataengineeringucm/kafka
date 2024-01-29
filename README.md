@@ -318,7 +318,11 @@ Una vez dentro comprobaremos el estado y versiones instaladas llamando:
 obtendremos una salida parecida a esta:
 
 ```json
-{"version":"7.5.3-ccs","commit":"9090b26369455a2f335fbb5487fb89675ee406ab","kafka_cluster_id":"MkU3OEVBNTcwNTJENDM2Qg"}%
+{
+  "version": "7.5.3-ccs",
+  "commit": "9090b26369455a2f335fbb5487fb89675ee406ab",
+  "kafka_cluster_id": "MkU3OEVBNTcwNTJENDM2Qg"
+}
 ```
 
 donde vemos la versión y commit del servidor y el id kafka cluster que hace de backend de el. Si obtenemos esta clase de respuesta es que nuestro cluster de connect esta preparado para trabajar.
@@ -330,7 +334,23 @@ Ahora comprobaremos los plugins instalados:
 para una instalación limpia deberíamos obtener una salida parecida a esta:
 
 ```json
-[{"class":"org.apache.kafka.connect.mirror.MirrorCheckpointConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorHeartbeatConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorSourceConnector","type":"source","version":"7.5.3-ccs"}]% 
+[
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorCheckpointConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorHeartbeatConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  }
+]
 ```
 
 como vemos los únicos plugins instalados serán los correspondientes a `mirrorMaker``
@@ -409,7 +429,28 @@ una vez reiniciado comprobamos de nuevo la lista de plugins:
 observando que ahora si lo tenemos disponible:
 
 ```json
-[{"class":"io.confluent.kafka.connect.datagen.DatagenConnector","type":"source","version":"null"},{"class":"org.apache.kafka.connect.mirror.MirrorCheckpointConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorHeartbeatConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorSourceConnector","type":"source","version":"7.5.3-ccs"}]
+[
+  {
+    "class": "io.confluent.kafka.connect.datagen.DatagenConnector",
+    "type": "source",
+    "version": "null"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorCheckpointConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorHeartbeatConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  }
+]
 ```
 
 Lo siguiente será crear una nueva instancia de nuestro conector (una aplicación corriendo en nuestro cluster connect). Para ello primero deberemos crear una configuración válida para él, para ello visitaremos la [Documentación de Referencia](https://github.com/confluentinc/kafka-connect-datagen/tree/master) del conector en Confluent Hub que en este caso nos lleva a un repositorio git, de la carpeta `config` del mismo extraemos esta configuracion de ejemplo:
@@ -419,16 +460,13 @@ Lo siguiente será crear una nueva instancia de nuestro conector (una aplicació
   "name": "datagen-users",
   "config": {
     "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "kafka.topic": "users",
     "quickstart": "users",
-    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter.schemas.enable": "false",
     "max.interval": 1000,
     "iterations": 10000000,
     "tasks.max": "1"
   }
-}
 ```
 
 Además de configuración especifica del conector, como que usamos el quickstart con el modelo `users` o las iteraciones y el intervalo de publicación de mensaje, vemos alguna configuración generica interesante:
@@ -436,8 +474,7 @@ Además de configuración especifica del conector, como que usamos el quickstart
 1. `connector.class`: Clase que implementa el connector.
 2. `kafka.topic`: Topic en el que publicará los mensajes (ojo esto es una configuración común pero no todos los conectores la llaman igual)
 3. `key.converter`: Tipo que usaremos para la serialización de la key (en este caso string)
-4. `value.converter`: Tipo que usaremos para la serializacion del payload del mensaje (en este caso JSON)
-5. `task.max`: Numero máximo de tareas que se distribuiran en el cluster de connect.
+4. `task.max`: Numero máximo de tareas que se distribuiran en el cluster de connect.
 
 para publicar esta configuración volveremos a usar el api de connect:
 
@@ -465,6 +502,10 @@ Ahora mismo ya podemos ver mensajes llegando a nuestro topic `users`, la manera 
 
 ![til](./assets/users-topic.png)
 
+otro dato importante de este conector es que por defecto esta haciendo uso de un schema (que previamente el ha configurado por nosotros), esto nos será especialmente util para el siguiente ejercicio. Podemos ver este esquema en la pestaña schema del topic:
+
+![til](./assets/users-schema.png)
+
 Haciendo uso, de nuevo del api de connect podemos recibir la información importante del conector, parar, reiniciar, borrar, comprobar status de nuestro conector, etc:
 
 Consulta Connector información:
@@ -478,10 +519,8 @@ Consulta Connector información:
     "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
     "quickstart": "users",
     "tasks.max": "1",
-    "value.converter.schemas.enable": "false",
     "name": "datagen-users",
     "kafka.topic": "users",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "max.interval": "1000",
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "iterations": "10000000"
@@ -627,6 +666,7 @@ Restart (reiniciar aplicacion):
   "type": "source"
 }
 ```
+
 > Nota: Todas estas operaciones podrían hacerse a nivel de TASK añadiendo el task id al path:
 
 `curl http://localhost:8083/connectors/datagen-users/tasks/0/status`
@@ -789,56 +829,56 @@ Podemos ver como el conector ha creado por nosotros una tabla que casa con el es
 
 `docker exec mysql bash -c "mysql --user=root --password=password --database=db -e 'describe users'"`
 
-```sql
-Field	Type	Null	Key	Default	Extra
-registertime	bigint	NO		NULL	
-userid	text	NO		NULL	
-regionid	text	NO		NULL	
-gender	text	NO		NULL	
-```
+|Field|Type|Null|Key|Default|Extra|
+|:---:|:--:|:--:|:-:|:-----:|:---:|
+|registertime|bigint|NO||NULL||
+|userid|text|NO||NULL||
+|regionid|text|NO||NULL||
+|gender|text|NO||NULL||
+
+> La configuracion auto.create del conector JDBC permite crear una tabla (digamos que ejecuta un DDL) basandose en el schema del topic pero siempre podremos indicarle entre otras propiedades la tabla y schema donde queramos que escriba
+> para ver mas datos sobre las opciones de este conector podeís echar un ojo a la [referencia](https://docs.confluent.io/kafka-connectors/jdbc/current/sink-connector/sink_config_options.html#sink-config-options)
 
 Y si lanzamos una `SELECT` sobre ella veremos como los datos van entrando:
 
 `docker exec mysql bash -c "mysql --user=root --password=password --database=db -e 'select * from users'"`
 
-```text
-registertime	userid	regionid	gender
-1512307237377	User_6	Region_4	MALE
-1513540605600	User_2	Region_9	FEMALE
-1488636880843	User_3	Region_7	FEMALE
-1499628245585	User_2	Region_4	FEMALE
-1488634338238	User_8	Region_6	MALE
-1490685074961	User_7	Region_8	OTHER
-1507031407191	User_8	Region_7	OTHER
-1488187488139	User_6	Region_7	MALE
-1507527225929	User_4	Region_4	OTHER
-1510335525396	User_5	Region_6	FEMALE
-1498710904036	User_2	Region_1	FEMALE
-1513067113343	User_3	Region_7	OTHER
-1517154596503	User_9	Region_8	OTHER
-1500203232171	User_9	Region_6	FEMALE
-1505191909015	User_5	Region_2	FEMALE
-1499977300831	User_3	Region_2	OTHER
-1512542341250	User_5	Region_1	FEMALE
-1492686190944	User_9	Region_6	MALE
-1503564149605	User_4	Region_6	MALE
-1496369347405	User_1	Region_3	MALE
-1498294133831	User_1	Region_6	OTHER
-1492314257633	User_9	Region_1	FEMALE
-1507350446146	User_3	Region_3	MALE
-1509665903160	User_1	Region_4	FEMALE
-1499137040847	User_1	Region_6	OTHER
-1510196176618	User_9	Region_2	OTHER
-1496652002217	User_4	Region_7	FEMALE
-1501175709291	User_1	Region_3	FEMALE
-1512796318009	User_5	Region_1	OTHER
-1516874972880	User_1	Region_3	MALE
-1515303168952	User_6	Region_9	OTHER
-1511455143265	User_8	Region_4	FEMALE
-```
+|registertime|userid|regionid|gender|
+|:----------:|:-------:|:---------:|:-------:|
+|1512307237377|User_6| Region_4 |MALE|
+|1513540605600|User_2|egion_9|FEMALE|
+|1488636880843|User_3|Region_7|FEMALE|
+|1499628245585|User_2|Region_4|FEMALE|
+|1488634338238|User_8|Region_6|MALE|
+|1490685074961|User_7|Region_8|OTHER|
+|1507031407191|User_8|Region_7|OTHER|
+|1488187488139|User_6|Region_7|MALE|
+|1507527225929|User_4|Region_4|OTHER|
+|1510335525396|User_5|Region_6|FEMALE|
+|1498710904036|User_2|Region_1|FEMALE|
+|1513067113343|User_3|Region_7|OTHER|
+|1517154596503|User_9|Region_8|OTHER|
+|1500203232171|User_9|Region_6|FEMALE|
+|1505191909015|User_5|Region_2|FEMALE|
+|1499977300831|User_3|Region_2|OTHER|
+|1512542341250|User_5|Region_1|FEMALE|
+|1492686190944|User_9|Region_6|MALE|
+|1503564149605|User_4|Region_6|MALE|
+|1496369347405|User_1|Region_3|MALE|
+|1498294133831|User_1|Region_6|OTHER|
+|1492314257633|User_9|Region_1|FEMALE|
+|1507350446146|User_3|Region_3|MALE|
+|1509665903160|User_1|Region_4|FEMALE|
+|1499137040847|User_1|Region_6|OTHER|
+|1510196176618|User_9|Region_2|OTHER|
+|1496652002217|User_4|Region_7|FEMALE|
+|1501175709291|User_1|Region_3|FEMALE|
+|1512796318009|User_5|Region_1|OTHER|
+|1516874972880|User_1|Region_3|MALE|
+|1515303168952|User_6|Region_9|OTHER|
+|1511455143265|User_8|Region_4|FEMALE|
 
-## Kafka Streams
-
+## Kafa Streams
 Toda la documentación oficial del API de Streams [aquí](https://kafka.apache.org/documentation/streams/)
 
 Especial atención a los [conceptos basicos](https://kafka.apache.org/27/documentation/streams/core-concepts)
