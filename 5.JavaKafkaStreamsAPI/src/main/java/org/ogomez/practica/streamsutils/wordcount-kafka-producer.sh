@@ -1,0 +1,1 @@
+kafka-console-producer --bootstrap-server broker-1:29092 --topic wordcount-input-topic

@@ -299,6 +299,627 @@ Más tarde TxWordCount consumirá los textos separando y contando las palabras d
 * En cada poll iniciaremos una nueva transacción
 * Ejecutaremos nuestra lógica de consumo para luego mandar todos los commit de los offset consumidos en este poll con el consumer group asegurandonos de ese modo que tanto productor como consumidor han marcado el mensaje como procesado.
 
+## Connect
+
+En esta sección practicaremos con la administración de conectores source y sink.
+
+Como primer paso vamos a comprobar el estado nuestro cluster de `Kafka Connect` para ello usaremos el [API de administración](https://docs.confluent.io/platform/current/connect/references/restapi.html).
+
+Podemos acceder a esta `API` desde nuestra maquina.
+
+nota: En caso de que vuestra distribución de docker no permita la comunicación con el contenedor podréis ejecutar los mismos comandos desde el mismo contenedor. Para entrar en él ejecutaremos:
+
+`docker exec -it connect /bin/bash`
+
+Una vez dentro comprobaremos el estado y versiones instaladas llamando:
+
+`curl http://localhost:8083`
+
+obtendremos una salida parecida a esta:
+
+```json
+{"version":"7.5.3-ccs","commit":"9090b26369455a2f335fbb5487fb89675ee406ab","kafka_cluster_id":"MkU3OEVBNTcwNTJENDM2Qg"}%
+```
+
+donde vemos la versión y commit del servidor y el id kafka cluster que hace de backend de el. Si obtenemos esta clase de respuesta es que nuestro cluster de connect esta preparado para trabajar.
+
+Ahora comprobaremos los plugins instalados:
+
+`curl http://localhost:8083/connector-plugins`
+
+para una instalación limpia deberíamos obtener una salida parecida a esta:
+
+```json
+[{"class":"org.apache.kafka.connect.mirror.MirrorCheckpointConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorHeartbeatConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorSourceConnector","type":"source","version":"7.5.3-ccs"}]% 
+```
+
+como vemos los únicos plugins instalados serán los correspondientes a `mirrorMaker``
+
+y los conectores (recordad Aplicaciones corriendo dentro de nuestro cluster) que existen:
+
+`curl http://localhost:8083/connectors`
+
+obteniendo una salida vacía (no tenemos ninguna aplicación corriendo en nuestro cluster)
+
+> Nota: Todos los comandos que vayamos ejecutando los podréis ejecutar como sh desde la carpeta 4. KafkaConnect
+> Os recomiendo usar un entorno linux (Linux, MAC o WSL en el caso de usar windows), no olvideis dar permisos de ejecución a los scripts (chmox -x <ruta del script>)
+
+### Datagen Source Connector
+
+Como primer paso vamos a practicar como crear un conector source es decir uno que inserte datos en un topic kafka. Para ello utilizaremos el `Datagen Source Connector` un conector que nos permitirá generar dato sintético en un topic Kafka.
+
+En este [link](https://www.confluent.io/hub/confluentinc/kafka-connect-datagen) podeis encontrar toda la documentación sobre el.
+
+Para ello primero deberemos instalar el `plugin` de dicho conector en nuestro cluster connect, para ello usaremos el cliente `confluent-hub` ya instalado en nuestro contenedor.
+
+`docker exec -it connect /bin/bash`
+
+`confluent-hub install confluentinc/kafka-connect-datagen:0.6.3`
+
+```sh
+docker exec -it connect /bin/bash
+[appuser@connect ~]$ confluent-hub install confluentinc/kafka-connect-datagen:0.6.3
+The component can be installed in any of the following Confluent Platform installations:
+  1. / (installed rpm/deb package)
+  2. / (where this tool is installed)
+Choose one of these to continue the installation (1-2): 1
+Do you want to install this into /usr/share/confluent-hub-components? (yN) y
+
+
+Component's license:
+Apache License 2.0
+https://www.apache.org/licenses/LICENSE-2.0
+I agree to the software license agreement (yN) y
+
+Downloading component Kafka Connect Datagen 0.6.3, provided by Confluent, Inc. from Confluent Hub and installing into /usr/share/confluent-hub-components
+Detected Worker's configs:
+  1. Standard: /etc/kafka/connect-distributed.properties
+  2. Standard: /etc/kafka/connect-standalone.properties
+  3. Standard: /etc/schema-registry/connect-avro-distributed.properties
+  4. Standard: /etc/schema-registry/connect-avro-standalone.properties
+  5. Used by Connect process with PID : /etc/kafka-connect/kafka-connect.properties
+Do you want to update all detected configs? (yN) y
+
+Adding installation directory to plugin path in the following files:
+  /etc/kafka/connect-distributed.properties
+  /etc/kafka/connect-standalone.properties
+  /etc/schema-registry/connect-avro-distributed.properties
+  /etc/schema-registry/connect-avro-standalone.properties
+  /etc/kafka-connect/kafka-connect.properties
+
+Completed
+```
+
+Eligiremos instalar desde el paquete rpm/deb (es decir desde el repositorio linux disponible en nuestro contenedor), en el path por defecto y que cambie todos los posibles ficheros de configuración de nuestro cluster.
+
+Si comprobamos ahora la lista de plugins:
+
+`curl http://localhost:8083/connector-plugins`
+
+veremos que `Datagen Source Connector` sigue sin aparecer en la lista de disponibles. Esto es porque necesitamos reiniciar nuestro cluster para que pueda coger el nuevo código instalado. Lo haremos ejecutando:
+
+```bash
+docker compose restart connect
+```
+
+una vez reiniciado comprobamos de nuevo la lista de plugins:
+
+`curl http://localhost:8083/connector-plugins`
+
+observando que ahora si lo tenemos disponible:
+
+```json
+[{"class":"io.confluent.kafka.connect.datagen.DatagenConnector","type":"source","version":"null"},{"class":"org.apache.kafka.connect.mirror.MirrorCheckpointConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorHeartbeatConnector","type":"source","version":"7.5.3-ccs"},{"class":"org.apache.kafka.connect.mirror.MirrorSourceConnector","type":"source","version":"7.5.3-ccs"}]
+```
+
+Lo siguiente será crear una nueva instancia de nuestro conector (una aplicación corriendo en nuestro cluster connect). Para ello primero deberemos crear una configuración válida para él, para ello visitaremos la [Documentación de Referencia](https://github.com/confluentinc/kafka-connect-datagen/tree/master) del conector en Confluent Hub que en este caso nos lleva a un repositorio git, de la carpeta `config` del mismo extraemos esta configuracion de ejemplo:
+
+```json
+{
+  "name": "datagen-users",
+  "config": {
+    "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
+    "kafka.topic": "users",
+    "quickstart": "users",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "max.interval": 1000,
+    "iterations": 10000000,
+    "tasks.max": "1"
+  }
+}
+```
+
+Además de configuración especifica del conector, como que usamos el quickstart con el modelo `users` o las iteraciones y el intervalo de publicación de mensaje, vemos alguna configuración generica interesante:
+
+1. `connector.class`: Clase que implementa el connector.
+2. `kafka.topic`: Topic en el que publicará los mensajes (ojo esto es una configuración común pero no todos los conectores la llaman igual)
+3. `key.converter`: Tipo que usaremos para la serialización de la key (en este caso string)
+4. `value.converter`: Tipo que usaremos para la serializacion del payload del mensaje (en este caso JSON)
+5. `task.max`: Numero máximo de tareas que se distribuiran en el cluster de connect.
+
+para publicar esta configuración volveremos a usar el api de connect:
+
+```bash
+curl -d @"datagen-users.json" -H "Content-Type: application/json" -X POST http://localhost:8083/connectors
+```
+
+Con este curl estamos pasando un fichero que contiene la configuración para del connector, el verbo POST de HTTP nos indica que estamos en "modo creación"
+
+> Nota: este comando debe ejecutarse desde la carpeta 4. KafkaConnect/DatagenSourceConnector
+> En caso de estar ejecutando los curl desde el contenedor debereis copiar primero el fichero de configuración a la carpeta desde donde ejecutéis el curl, para ello debéis ejecutar:
+> docker cp datagen-users.json connect:/home/appuser
+
+Si ejecutamos ahora la consulta de connectores corriendo obtendriamos algo como esto:
+
+`curl http://localhost:8083/connectors`
+
+```json
+["datagen-users"]
+```
+  
+Ahora mismo ya podemos ver mensajes llegando a nuestro topic `users`, la manera mas facil de hacerlo es a traves de la instancia de `control-center` que tenemos disponible en nuestro entorno, para ellos solo debeis poner en vuestro navegador:
+
+`http://localhost:9021`
+
+![til](./assets/users-topic.png)
+
+Haciendo uso, de nuevo del api de connect podemos recibir la información importante del conector, parar, reiniciar, borrar, comprobar status de nuestro conector, etc:
+
+Consulta Connector información:
+
+`curl http://localhost:8083/connectors/datagen-users`
+
+```json
+{
+  "name": "datagen-users",
+  "config": {
+    "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
+    "quickstart": "users",
+    "tasks.max": "1",
+    "value.converter.schemas.enable": "false",
+    "name": "datagen-users",
+    "kafka.topic": "users",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "max.interval": "1000",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "iterations": "10000000"
+  },
+  "tasks": [
+    {
+      "connector": "datagen-users",
+      "task": 0
+    }
+  ],
+  "type": "source"
+}
+```
+
+Status:
+
+`curl http://localhost:8083/connectors/datagen-users/status`
+
+```json
+{
+  "name": "datagen-users",
+  "connector": {
+    "state": "RUNNING",
+    "worker_id": "connect:8083"
+  },
+  "tasks": [
+    {
+      "id": 0,
+      "state": "RUNNING",
+      "worker_id": "connect:8083"
+    }
+  ],
+  "type": "source"
+}
+```
+
+Este `endpoint` es quizá el mas importante ya que no solo no dará información de las tareas y los nodos en que corren estas sino que en caso de que alguna estuviera en estado de fallo podríamos ver los logs asociados al mismo.
+
+ejemplo:
+
+```json
+{
+    "name": "hdfs-sink-connector",
+    "connector": {
+        "state": "RUNNING",
+        "worker_id": "fakehost:8083"
+    },
+    "tasks":
+    [
+        {
+            "id": 0,
+            "state": "RUNNING",
+            "worker_id": "fakehost:8083"
+        },
+        {
+            "id": 1,
+            "state": "FAILED",
+            "worker_id": "fakehost:8083",
+            "trace": "org.apache.kafka.common.errors.RecordTooLargeException\n"
+        }
+    ]
+}
+```
+
+Parada:
+
+`curl -X PUT http://localhost:8083/connectors/datagen-users/stop`
+
+Si comprobamos el status veriamos:
+
+```json
+{
+  "name": "datagen-users",
+  "connector": {
+    "state": "STOPPED",
+    "worker_id": "connect:8083"
+  },
+  "tasks": [],
+  "type": "source"
+}
+```
+
+Pausa (la aplicación sigue corriendo en nuestro servidor pero los productores estan parados):
+
+```json
+{
+  "name": "datagen-users",
+  "connector": {
+    "state": "PAUSED",
+    "worker_id": "connect:8083"
+  },
+  "tasks": [
+    {
+      "id": 0,
+      "state": "PAUSED",
+      "worker_id": "connect:8083"
+    }
+  ],
+  "type": "source"
+}
+```
+
+Resume (continuar donde los dejamos sin reiniciar):
+
+`curl -X PUT http://localhost:8083/connectors/datagen-users/resume`
+
+```json
+{
+  "name": "datagen-users",
+  "connector": {
+    "state": "RUNNING",
+    "worker_id": "connect:8083"
+  },
+  "tasks": [
+    {
+      "id": 0,
+      "state": "RUNNING",
+      "worker_id": "connect:8083"
+    }
+  ],
+  "type": "source"
+}
+```
+
+Restart (reiniciar aplicacion):
+
+`curl -X POST http://localhost:8083/connectors/datagen-users/restart`
+
+```json
+{
+  "name": "datagen-users",
+  "connector": {
+    "state": "RUNNING",
+    "worker_id": "connect:8083"
+  },
+  "tasks": [
+    {
+      "id": 0,
+      "state": "RUNNING",
+      "worker_id": "connect:8083"
+    }
+  ],
+  "type": "source"
+}
+```
+> Nota: Todas estas operaciones podrían hacerse a nivel de TASK añadiendo el task id al path:
+
+`curl http://localhost:8083/connectors/datagen-users/tasks/0/status`
+
+```json
+{
+  "id": 0,
+  "state": "RUNNING",
+  "worker_id": "connect:8083"
+}
+```
+
+Delete (borrar aplicación de nuestro servidor):
+
+`curl -X DELETE http://localhost:8083/connectors/datagen-users`
+
+Si comprobamos los conectores de nuestro cluster veremos que ahora esta vacío.
+
+### MySQL Sink Connector
+
+En este ejemplo leeremos los datos que hemos ingestado con nuestro `datagen-users` en el topic `users` y volcaremos los datos en una tabla en una instancia de MySQL que hemos creado en nuestro entorno docke-compose (revisad el último servicio)
+
+Para ello usaremos el [JDBC Sink Connector](https://www.confluent.io/hub/confluentinc/kafka-connect-jdbc)
+
+Al igual que con el source connector lo primero que haremos es instalar el plugin:
+
+`docker exec -it connect /bin/bash`
+
+`confluent-hub install confluentinc/kafka-connect-jdbc:10.7.4`
+
+```bash
+The component can be installed in any of the following Confluent Platform installations:
+  1. / (installed rpm/deb package)
+  2. / (where this tool is installed)
+Choose one of these to continue the installation (1-2): 1
+Do you want to install this into /usr/share/confluent-hub-components? (yN) y
+
+
+Component's license:
+Confluent Community License
+https://www.confluent.io/confluent-community-license
+I agree to the software license agreement (yN) y
+
+Downloading component Kafka Connect JDBC 10.7.4, provided by Confluent, Inc. from Confluent Hub and installing into /usr/share/confluent-hub-components
+Detected Worker's configs:
+  1. Standard: /etc/kafka/connect-distributed.properties
+  2. Standard: /etc/kafka/connect-standalone.properties
+  3. Standard: /etc/schema-registry/connect-avro-distributed.properties
+  4. Standard: /etc/schema-registry/connect-avro-standalone.properties
+  5. Used by Connect process with PID : /etc/kafka-connect/kafka-connect.properties
+Do you want to update all detected configs? (yN) y
+
+Adding installation directory to plugin path in the following files:
+  /etc/kafka/connect-distributed.properties
+  /etc/kafka/connect-standalone.properties
+  /etc/schema-registry/connect-avro-distributed.properties
+  /etc/schema-registry/connect-avro-standalone.properties
+  /etc/kafka-connect/kafka-connect.properties
+
+Completed
+```
+
+El conector JDBC necesita los drivers Java específicos de cada BBDD para poder conectar y operar con nuestro MySQL por tanto necesitamos proveerlos. En la carpetas `1.Environment/mysql` podeis encontrar el jar del driver en cuestion. Para copiarlo a nuestro contendor de MySQL:
+
+`docker cp ../../1.Environment/mysql/mysql-connector-java-5.1.45.jar connect:/usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc/lib/mysql-connector-java-5.1.45.jar`
+
+y reiniciamos el servicio de connect:
+
+```bash
+docker compose restart connect
+```
+
+una vez reiniciado comprobamos de nuevo la lista de plugins:
+
+`curl http://localhost:8083/connector-plugins`
+
+observando que ahora si lo tenemos disponible:
+
+```json
+[
+  {
+    "class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "type": "sink",
+    "version": "10.7.4"
+  },
+  {
+    "class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+    "type": "source",
+    "version": "10.7.4"
+  },
+  {
+    "class": "io.confluent.kafka.connect.datagen.DatagenConnector",
+    "type": "source",
+    "version": "null"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorCheckpointConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorHeartbeatConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  },
+  {
+    "class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+    "type": "source",
+    "version": "7.5.3-ccs"
+  }
+]
+```
+
+para crear este conector de ejemplo usaremos esta configuracion:
+
+```json
+{
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "connection.url": "jdbc:mysql://mysql:3306/db?user=user&password=password&useSSL=false",
+    "topics": "users",
+    "auto.create": "true"
+}
+```
+
+en la que proveemos los datos de conexion con nuestra instancia de mysql y dejamos al connector que haga el resto por nosotros.
+
+Creamos el nuevo conector usando este fichero:
+
+`curl -d @"mysql-users-sink.json" -H "Content-Type: application/json" -X POST http://localhost:8083/connectors`
+
+y comprobamos la info de creacion:
+
+`curl http://localhost:8083/connectors/mysql-users-sink`
+
+```json
+{
+  "name": "mysql-users-sink",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "users",
+    "name": "mysql-users-sink",
+    "auto.create": "true",
+    "connection.url": "jdbc:mysql://mysql:3306/db?user=user&password=password&useSSL=false"
+  },
+  "tasks": [
+    {
+      "connector": "mysql-users-sink",
+      "task": 0
+    }
+  ],
+  "type": "sink"
+}
+```
+
+usaremos comandos MySQL ejecutados dentro del contenedor para observar que es lo que esta pasando en la base de datos:
+
+Podemos ver como el conector ha creado por nosotros una tabla que casa con el esquema de nuestro topic:
+
+`docker exec mysql bash -c "mysql --user=root --password=password --database=db -e 'describe users'"`
+
+```sql
+Field	Type	Null	Key	Default	Extra
+registertime	bigint	NO		NULL	
+userid	text	NO		NULL	
+regionid	text	NO		NULL	
+gender	text	NO		NULL	
+```
+
+Y si lanzamos una `SELECT` sobre ella veremos como los datos van entrando:
+
+`docker exec mysql bash -c "mysql --user=root --password=password --database=db -e 'select * from users'"`
+
+```text
+registertime	userid	regionid	gender
+1512307237377	User_6	Region_4	MALE
+1513540605600	User_2	Region_9	FEMALE
+1488636880843	User_3	Region_7	FEMALE
+1499628245585	User_2	Region_4	FEMALE
+1488634338238	User_8	Region_6	MALE
+1490685074961	User_7	Region_8	OTHER
+1507031407191	User_8	Region_7	OTHER
+1488187488139	User_6	Region_7	MALE
+1507527225929	User_4	Region_4	OTHER
+1510335525396	User_5	Region_6	FEMALE
+1498710904036	User_2	Region_1	FEMALE
+1513067113343	User_3	Region_7	OTHER
+1517154596503	User_9	Region_8	OTHER
+1500203232171	User_9	Region_6	FEMALE
+1505191909015	User_5	Region_2	FEMALE
+1499977300831	User_3	Region_2	OTHER
+1512542341250	User_5	Region_1	FEMALE
+1492686190944	User_9	Region_6	MALE
+1503564149605	User_4	Region_6	MALE
+1496369347405	User_1	Region_3	MALE
+1498294133831	User_1	Region_6	OTHER
+1492314257633	User_9	Region_1	FEMALE
+1507350446146	User_3	Region_3	MALE
+1509665903160	User_1	Region_4	FEMALE
+1499137040847	User_1	Region_6	OTHER
+1510196176618	User_9	Region_2	OTHER
+1496652002217	User_4	Region_7	FEMALE
+1501175709291	User_1	Region_3	FEMALE
+1512796318009	User_5	Region_1	OTHER
+1516874972880	User_1	Region_3	MALE
+1515303168952	User_6	Region_9	OTHER
+1511455143265	User_8	Region_4	FEMALE
+```
+
+## Kafka Streams
+
+Toda la documentación oficial del API de Streams [aquí](https://kafka.apache.org/documentation/streams/)
+
+Especial atención a los [conceptos basicos](https://kafka.apache.org/27/documentation/streams/core-concepts)
+
+También digno de mencionar como todas las semánticas de entrega están soportadas por infraestructura mediante la propiedad de configuración **processing.guarantee**
+
+### KStream vs KTable
+
+Para el primer ejemplo buscaremos los básicos de Stream KTable y KStream, la mejor explicación grafica la podemos encontrar [aquí](https://www.confluent.io/blog/kafka-streams-tables-part-1-event-streaming/)
+
+Podemos ver el stream como una foto en un momento dado del estado de un topic/partición, esta foto se está siendo constantemente actualizada (si procesamos en tiempo real) o bien en micro batches en una ventana de tiempo, como vemos en los gráficos de la docu oficial cada momento del stream representa un mensaje en la historia del topic. Por contra en la tabla podremos de un solo momento (en un solo offset) obtener la información agregada del estado de nuestro topic.
+
+En nuestro primer ejemplo **KafkaStreamsWordCount** vemos como el simple concepto de Ktable simplifica y hace mucho más eficiente nuestro código.
+
+1. Primero ve a la carpeta `.../Kafka/5.JavaKafkaStreamsAPI/src/main/java/org/ogomez/practica/streambasics`
+2. Desde ahí ejecutaremos nuestro cídigo ejemplo `KafkaStreamsWordCount.java`.
+   Ejemplo de ejecución con maven: `mvn exec:java -Dexec.mainClass="org.ogomez.practica.streambasics.KafkaStreamsWordCount"`
+   Con esto tendremos corriendo nuestra primera aplicación Kafka Streams
+3. Para producir algunos datos utilizaremos un `console producer`:
+   1. Entraremos en el contenedor de un broker: `docker exec -it broker-1 /bin/bash`
+   2. Ejecutamos nuestro console producer: `kafka-console-producer --bootstrap-server broker-1:29092 --topic wordcount-input-topic`
+   3. Ahora podemos introducir mensajes por ejemplo `en un lugar de la mancha`
+4. De la misma manera arrancamos nuestro `console consumer` y obervamos los resultados:
+   1. Entraremos en el contenedor de un broker: `docker exec -it broker-1 /bin/bash`
+   2. Ejecutamos nuestro console consumer: `kafka-console-consumer --bootstrap-server broker-1:29092 --topic wordcount-output-topic --property print.key=true --from-beginning  --consumer-property group.id=output-consumer --property "value.deserializer=org.apache.kafka.common.serialization.LongDeserializer"`
+      Observad que en este caso estamos diciendo a nuestro consumidor que el tipo de dato a deserializar en un `Long` para que pueda mostrar correctamente la cuenta.
+
+Que es lo que estamos viendo:
+
+Cada mensaje que producimos se divide en palabras y vamos acumulando las veces que llegan a nuestro topic de entrada, de modo que cuando consumimos veremos como key la palabra y como valor el número de veces que la recibimos.
+
+Que pasará si paramos nuestra aplicación KStreams, volvemos arrancarla y volvemos a producir "en un lugar de la mancha", ¿habrá perdido la cuenta?
+
+<details>
+  <summary><b>Solución</b></summary>
+No, gracias a nuestro state store al arrancar nuestro KStream es capaz de recuperar la información que tenia anteriormente.
+En este caso debido a que nuestra persistencia es en nuestro disco local (fijaros en la carpeta temp que cuelga de 5.JavaKafkaStreamsAPI) en arranque será capaz de reconstruir desde ahí, en caso de que la borraramos esta se reconstruiría a partir de los topic intermedios que empiezan por  `wordCount-KSTREAM-AGGREGATE-STATE-STORE`.
+</details>
+
+### Agregando Información de un Stream
+
+Si nos fijamos en nuestro ejemplo **KafkaStreams** mediante un sencillo método (función lambda) aggregate podemos ir agregando, valga la redundancia, información que va llegando a nuestro topic.
+
+Podemos simplificar más aún estos calculos gracias a la abstracción **KGroupedStream** (ejemplos **KafkaStreamGroupedKey**, **KafkaStreamsAggregate**) que conseguiremos aplicando **groupBy* a nuestro stream, sobre la que podemos aplicar funciones reduce, aggregate, flatmap, etc.
+
+Para ejecutar este ejemplo solo debereis seguir las instrucciones del ejemplo anterior cambiando el nombre de la clase del paso 2 por `org.ogomez.practica.streambasics.KafkaStreamGroupedKey` o `org.ogomez.practica.streambasics.KafkaStreamsAggregate` dependiendo del caso.
+
+¿Qué diferencia vemos entre nuestros dos ejemplos?
+
+<details>
+  <summary><b>Pista</b></summary>
+
+¿Alguna diferencia en como suma?, ¿Qué pasa si dejamos algún tiempo sin consumir?
+Fijaos en la linea 9 de KafkaStreamsAggregate.java
+</details>
+
+<details>
+  <summary><b>Solución</b></summary>
+
+Efectivamente el windowedBy descartará por defecto todos los mensajes que salgan de nuestra ventana de tiempo. Por tanto vemos como en el ejemplo de aggregate sumara todas las entradas de las keys producidas dentro de la ventana. Mientras que en la GroupedKey sumara todo lo que entre en el topic.
+
+Más info sobre el "windowing" [aquí](https://kafka.apache.org/27/documentation/streams/core-concepts#streams_concepts_windowing)
+
+</details>
+
+### Joins
+
+También podemos "cruzar los rayos" para ello usaremos la sintaxis de join de las que nos provee el DSL de Streams. Esto nos permitirá agregar información de dos o más topics en cualquier abstracción del [dsl](https://kafka.apache.org/27/documentation/streams/developer-guide/dsl-api.html#id11) de streams.
+
+Información detalla y amigable de todas las posibilidades de Join [aquí](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/)
+
+Otra cosa a tener en cuenta es que alguna de las operaciones sobre los streams son stateful, esto quiere decir que los procesadores guardaran información en un storage intermedio (normalmente disco local) del estado de las task ejecutadas, de modo que puedan recuperar y proseguir las operaciones donde las dejaron en caso de tener que reiniciarse.
+
+Además esto nos provee de la interesante posibilidad de hacer queries interactivas sobre un stream, funcionalidad sobre la que se construye KSQL.
+
+En nuestros ejemplos de **Movies** utilizaremos joins de streams sirviéndonos tanto de KTables  como de [GlobalKTables](https://kafka.apache.org/27/documentation/streams/developer-guide/dsl-api.html#streams_concepts_globalktable).
+
+Utilizaremos  estos ejemplos para ver como de una manera sencilla podemos implementar nuestros propios [serializadores y serdes](https://kafka.apache.org/10/documentation/streams/developer-guide/datatypes), que no es más que la abstracción que agrupa en una sola clase el serializador y deserializdor. Para ello solo tendremos que exteneder e implementar algunos métodos, para dar la logica de mapeo desde el tipo de entrada a nuestro tipo de salida. Puedes ver un ejemplo en el paquete **movies.serializers**, y un ejemplo genérico de serialización POJO <-> JSON en el paquete **streamutils**
+
+## KSQL
+
 ## Anexo: Como ejecutar Aplicaciones Java desde Maven
 
 Como ejemplo usaremos el ejercicio de productor/consumidor simple contenido en la carpeta: `3.1.JavaConsumerProducerAPI/src/main/java/org/ogomez/nontx`.

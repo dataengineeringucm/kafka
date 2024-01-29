@@ -4,8 +4,5 @@
 **/target/**
 /temp/
 .DS_Store
-/4.JavaKafkaStreamAPI
-/5.KafkaConnect
 .bsp
-3.3.ScalaConsumerProducerAPI
 .metals
