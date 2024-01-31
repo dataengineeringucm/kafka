@@ -267,6 +267,7 @@ Los nuevos mensajes empezarán a ser consumidos por el proceso perteneciente al 
 Ejemplos python traidos desde:
 
 https://github.com/confluentinc/confluent-kafka-python
+
 ```
 
 ### Ejercicio2 - Console Producer / Consumer
@@ -959,6 +960,140 @@ En nuestros ejemplos de **Movies** utilizaremos joins de streams sirviéndonos t
 Utilizaremos  estos ejemplos para ver como de una manera sencilla podemos implementar nuestros propios [serializadores y serdes](https://kafka.apache.org/10/documentation/streams/developer-guide/datatypes), que no es más que la abstracción que agrupa en una sola clase el serializador y deserializdor. Para ello solo tendremos que exteneder e implementar algunos métodos, para dar la logica de mapeo desde el tipo de entrada a nuestro tipo de salida. Puedes ver un ejemplo en el paquete **movies.serializers**, y un ejemplo genérico de serialización POJO <-> JSON en el paquete **streamutils**
 
 ## KSQL
+
+Existen dos maneras de interactuar con KSQL.
+
+Como manera de mas fácil acceso podéis acceder a la UI a traves de `Control Center`
+
+`http://localhost:9091`
+
+![til](./assets/ksql-ui.png)
+
+La otra es a través del cliente KSQLDB al que podemos acceder por el contender que tenemos habilitado para ello
+
+`docker exec -it ksql-db-cli /bin/bash``
+
+`ksql http://ksqldb-server:8088`
+
+Lo siguiente que haremos es algunas operaciones básicas, como crear un stream desde nuestro topic `users` que contiene los datos generados por `DataGenSourceConnector`
+
+para ello correremos la siguiente query:
+
+```sql
+CREATE STREAM USERS_STREAM WITH (KAFKA_TOPIC='users', KEY_FORMAT='KAFKA', VALUE_FORMAT='AVRO');
+```
+
+Con esto hemos convertido nuestro topic en un `Stream` sobre el que podremos operar.
+
+podemos ver los streams creados en nuestro server con:
+
+```bash
+ksql> show streams
+>;
+
+ Stream Name         | Kafka Topic                 | Key Format | Value Format | Windowed
+------------------------------------------------------------------------------------------
+ KSQL_PROCESSING_LOG | default_ksql_processing_log | KAFKA      | JSON         | false
+ USERS_STREAM        | users                       | KAFKA      | AVRO         | false
+------------------------------------------------------------------------------------------
+```
+
+Para observar la topología detras de nuestro stream podemos ejecutar:
+
+```bash
+DESCRIBE STREAM USERS_STREAM EXTENDED;
+```
+
+```bash
+Name                 : USERS_STREAM
+Type                 : STREAM
+Timestamp field      : Not set - using <ROWTIME>
+Key format           : KAFKA
+Value format         : AVRO
+Kafka topic          : users (partitions: 1, replication: 1)
+Statement            : CREATE STREAM USERS_STREAM (REGISTERTIME BIGINT, USERID STRING, REGIONID STRING, GENDER STRING) WITH (CLEANUP_POLICY='delete', KAFKA_TOPIC='users', KEY_FORMAT='KAFKA', VALUE_FORMAT='AVRO');
+
+ Field        | Type
+--------------------------------
+ REGISTERTIME | BIGINT
+ USERID       | VARCHAR(STRING)
+ REGIONID     | VARCHAR(STRING)
+ GENDER       | VARCHAR(STRING)
+--------------------------------
+
+Local runtime statistics
+------------------------
+
+
+(Statistics of the local KSQL server interaction with the Kafka topic users)
+```
+
+y ver los datos que llegan el:
+
+```bash
+SELECT * FROM USERS_STREAM EMIT CHANGES;
+```
+
+|REGISTERTIME|USERID|REGIONID|GENDER|
+|:----------:|:----:|:------:|:----:|
+|1488094249606                                 |User_3                                        |Region_4                                      |OTHER                                         |
+|1510358100791                                 |User_6                                        |Region_3                                      |MALE                                          |
+|1514048793001                                 |User_6                                        |Region_2                                      |OTHER                                         |
+|1507939356721                                 |User_6                                        |Region_6                                      |FEMALE                                        |
+|1505126060696                                 |User_6                                        |Region_2                                      |MALE                                          |
+|1495629055985                                 |User_5                                        |Region_3                                      |MALE                                          |
+|1504332566210                                 |User_4                                        |Region_8                                      |FEMALE                                        |
+|1490129033465                                 |User_8                                        |Region_9                                      |FEMALE                                        |
+|1503939006889                                 |User_3                                        |Region_3                                      |OTHER                                         |
+|1492430138082                                 |User_9                                        |Region_3                                      |OTHER                                         |
+|1516566496273                                 |User_9                                        |Region_9                                      |MALE                                          |
+|1501009500057                                 |User_2                                        |Region_1                                      |OTHER                                         |
+|1489648415665                                 |User_9                                        |Region_2                                      |FEMALE                                        |
+
+Aplicaremos alguna transformación sobre este Stream generando uno nuevo. Esto es lo que llamamos `Materialized Views`
+
+Crearemos un nuevo stream, en el que solo tendremos `registertime` y `userid`:
+
+```bash
+CREATE STREAM USERS_REGISTRATIOM AS
+  SELECT userid, registertime
+  FROM USERS_STREAM;
+```
+
+Ahora podemos visualizar en tiempo real los registros del usuario con id `User_9`
+
+```bash
+SELECT * FROM USERS_REGISTRATIOM WHERE USERID = 'User_9' EMIT CHANGES;
+```
+
+Creamos una tabla que contará los usuarios que se registran agrupando por id:
+
+```bash
+CREATE TABLE USERS_REGISTRATIONS AS
+  SELECT userid, count(*) as count
+  FROM USERS_STREAM
+  GROUP BY userid;
+```
+
+Contaremos los registros de cada usuario por minuto:
+
+```bash
+CREATE TABLE users_count as
+SELECT userid, COUNT(*) as count FROM USERS_STREAM
+  WINDOW TUMBLING (SIZE 1 MINUTE)
+  GROUP BY userid;
+```
+
+Agregamos el numero de conexiones del usuario con nuestro Stream base:
+
+```bash
+CREATE STREAM users_agg AS
+  SELECT users_stream.userid, registertime, count
+  FROM users_stream
+  JOIN users_registrations
+  ON users_stream.userid = users_registrations.userid
+  EMIT CHANGES;
+```
 
 ## Anexo: Como ejecutar Aplicaciones Java desde Maven
 
