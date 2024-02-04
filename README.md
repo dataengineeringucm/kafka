@@ -1095,6 +1095,10 @@ CREATE STREAM users_agg AS
   EMIT CHANGES;
 ```
 
+## End to End Use Case
+
+```
+
 ## Anexo: Como ejecutar Aplicaciones Java desde Maven
 
 Como ejemplo usaremos el ejercicio de productor/consumidor simple contenido en la carpeta: `3.1.JavaConsumerProducerAPI/src/main/java/org/ogomez/nontx`.

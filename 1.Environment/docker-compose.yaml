@@ -298,3 +298,20 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: password
       MYSQL_ROOT_HOST: 172.% 
+  mongodb:
+    hostname: mongo
+    container_name: mongo
+    image: mongo:6.0.13
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
+  mongosetup:
+    container_name: mongo_setup
+    image: mongo:6.0.13
+    depends_on:
+      - mongodb
+    restart: "no"
+    tty: true
+    volumes:
+      - $PWD/mongo:/setup
+    entrypoint: [ "bash", "-c", "sleep 10 && chmod +x /setup/init.sh && /setup/init.sh"]      
