@@ -298,3 +298,25 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: password
       MYSQL_ROOT_HOST: 172.% 
+  mongodb:
+    hostname: mongo
+    container_name: mongo
+    image: mongo:7.0
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate() }" | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 0s
+      start_interval: 1s
+      retries: 30
+    command: -replSet rs0 && rs.initiate()
+  mongosetup:
+    container_name: mongo_setup
+    image: mongo:7.0
+    depends_on:
+      - mongodb
+    restart: "no"
+    tty: true
+    volumes:
+      - $PWD/mongo:/setup
+    entrypoint: [ "bash", "-c", "sleep 10 && chmod +x /setup/init.sh && /setup/init.sh"]      
