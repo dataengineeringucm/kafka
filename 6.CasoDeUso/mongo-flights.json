@@ -1,0 +1,22 @@
+{
+    "name": "mongo-source",
+    "config": {
+      "connector.class": "com.mongodb.kafka.connect.MongoSourceConnector",
+      "tasks.max": 1,
+      "database": "test",
+      "collection": "flights",
+      "connection.uri": "mongodb://mongo:27017",
+      "key.converter":"org.apache.kafka.connect.storage.StringConverter",
+      "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+      "value.converter.schemas.enable": "false",
+      "output.format.value": "json",
+      "output.json.formatter": "com.mongodb.kafka.connect.source.json.formatter.DefaultJson",
+      "publish.full.document.only": "true", 
+      "topic.prefix": "mongo",
+      "poll.max.batch.size": "1000",
+      "poll.await.time.ms": "5000",
+      "pipeline":"[]",
+      "batch.size": 0,
+      "startup.mode" : "copy_existing"
+    }
+  }
