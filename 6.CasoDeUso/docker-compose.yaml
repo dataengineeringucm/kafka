@@ -236,7 +236,7 @@ services:
       - "9021:9021"
     environment:
       CONTROL_CENTER_BOOTSTRAP_SERVERS: broker-1:29092,broker-2:29094,broker-3:29095
-      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: "http://connect:8083"
+      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'http://connect:8083'
       CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
       CONTROL_CENTER_KSQL_KSQLDB1_ADVERTISED_URL: "http://localhost:8088"
       CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
@@ -297,4 +297,26 @@ services:
       MYSQL_DATABASE: db
       MYSQL_USER: user
       MYSQL_PASSWORD: password
-      MYSQL_ROOT_HOST: 172.%
+      MYSQL_ROOT_HOST: 172.% 
+  mongodb:
+    hostname: mongo
+    container_name: mongo
+    image: mongo:7.0
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate() }" | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 0s
+      start_interval: 1s
+      retries: 30
+    command: -replSet rs0 && rs.initiate()
+  mongosetup:
+    container_name: mongo_setup
+    image: mongo:7.0
+    depends_on:
+      - mongodb
+    restart: "no"
+    tty: true
+    volumes:
+      - $PWD/mongo:/setup
+    entrypoint: [ "bash", "-c", "sleep 10 && chmod +x /setup/init.sh && /setup/init.sh"]      

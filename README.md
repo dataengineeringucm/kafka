@@ -879,7 +879,16 @@ Y si lanzamos una `SELECT` sobre ella veremos como los datos van entrando:
 |1515303168952|User_6|Region_9|OTHER|
 |1511455143265|User_8|Region_4|FEMALE|
 
-## Kafa Streams
+### Creación de Entorno automatizado
+
+Para poder tener como base para experimentar con KSQL y STREAMS con lo trabajado hasta ahora en la carpeta `1.Environment`teneis disponible el script `start.sh` que deja el entorno preparado hasta este punto.
+
+Recuerda ejecutar el script de limpieza `clean.sh` antes de ejecutarlo para dejar el entorno local en un estado coherente.
+
+> Nota: Este script es una manera de ponernos en un punto avanzado desde 0, la recomendación para el correcto aprendizaje es realizar todos los ejercicios en el orden propuesto.
+
+## Kafka Streams
+
 Toda la documentación oficial del API de Streams [aquí](https://kafka.apache.org/documentation/streams/)
 
 Especial atención a los [conceptos basicos](https://kafka.apache.org/27/documentation/streams/core-concepts)
@@ -1095,7 +1104,39 @@ CREATE STREAM users_agg AS
   EMIT CHANGES;
 ```
 
-## End to End Use Case
+## Caso de Uso
+
+Para el caso de uso final usaremos un nuevo entorno que se autocreara mediante un script de automatización, para lo cual debemos asegurarnos de haber limpiado correctamente el anterior:
+
+ 1. Ejecutar el script `clean.sh` de la carpeta `1.Environment`con ello habremos limpiado contenedores, imágenes y volumenes docker de nuestro entorno 
+ 2. Ejecutar el script `start.sh`de la carpeta `6.CasoDeUso`
+
+### Detalles de ejecución del entorno
+
+El entorno consta de:
+
+  1. 3 Kraft Controllers
+  2. 3 Brokers
+  3. 1 Schema Regsitry
+  4. 1 Kafka Connect
+  5. 1 MySQL
+  6. 1 Mongo DB
+
+Tras levantar el entorno ejecutaremos la instalación de los conectores `Datagen` `JDBC`y `MongoDB`tal como hemos visto en los apartados anteriores.
+
+El objetivo de este ejercicio es proveer de un entorno base para poder "jugar" con las herramientas de streaming del ecosistema Kafka.
+
+Para ello utilizaremos  una versión ya normalizada un dataset de vuelos en EEUU reducido a 5 dias, que podeis encontrar en la carpeta `6.CasoDeUso/mongo/data`.
+
+Este dataset esta previamente populado al contenedor de Mongo del entorno de la carpeta de este ejercicio.
+
+Como primer paso instalaremos el conector de mongoDB tal cmo hemos hecho en los casos de uso de connect para otras fuentes de dato.
+
+Podeis encontrar el json de confguración y los scripts de creación y borrado del conector en la misma carpeta.
+
+Con esto conseguiremos un topic "raw" es decir cargar en un topic los datos del dataset tal como vienen de la colección Mongo
+
+Crearemos un Stream a partir de ese topic como forma de dar formato KSQL a los datos:
 
 ```bash
 create stream flights_json( 
@@ -1127,6 +1168,8 @@ create stream flights_json(
 with(kafka_topic='mongo.test.flights', value_format='json');
 ```
 
+Por ultimo crearemos una vista materializada (topic flights) con los datos relevantes del dataset.
+
 ```bash
 CREATE STREAM flights 
 WITH (
@@ -1151,6 +1194,8 @@ AS SELECT
 FROM FLIGHTS_JSON
 EMIT CHANGES;
 ```
+
+#### Este entorno debería servir de base para la realización de la tarea final del módulo
 
 ## Anexo: Como ejecutar Aplicaciones Java desde Maven
 
