@@ -8,7 +8,7 @@ docker-compose up -d
 
 echo "Esperando 60 sg a que connect levante"
 
-sleep 60s
+sleep 60
 
 docker-compose exec connect confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:0.6.3
 
@@ -20,7 +20,7 @@ docker-compose restart connect
 
 echo "Esperando 60 sg a que connect reinicie"
 
-sleep 60s
+sleep 60
 
 cd $DIR/../4.KafkaConnect/4.1.DatagenSourceConnector
 ./create-datagen-users.sh

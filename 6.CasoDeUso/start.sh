@@ -4,7 +4,7 @@ docker-compose up -d
 
 echo "Esperando 60 sg a que connect levante"
 
-sleep 60s
+sleep 60
 
 docker-compose exec connect confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:0.6.3
 
@@ -18,13 +18,13 @@ docker-compose restart connect
 
 echo "Esperando 60 sg a que connect reinicie"
 
-sleep 60s
+sleep 60
 
 ./create-mongo-flights.sh
 
 docker cp $PWD/statements.sql ksqldb-cli:/tmp/statements.sql
 
-sleep 10s
+sleep 10
 
 docker-compose exec ksqldb-cli bash -c "ksql -u ksqlDBUser -p ksqlDBUser http://ksqldb-server:8088 <<EOF
 RUN SCRIPT '/tmp/statements.sql';
